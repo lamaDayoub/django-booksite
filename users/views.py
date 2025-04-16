@@ -107,6 +107,7 @@ class ProfileCompletionView(RetrieveUpdateAPIView):
         security=[{"Bearer": []}]  # ← Required for authenticated endpoints
     )
     def patch(self, request, *args, **kwargs):
+        kwargs['partial'] = True
         return super().patch(request, *args, **kwargs)
     
     def get_object(self):

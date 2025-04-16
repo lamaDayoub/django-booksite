@@ -3,12 +3,14 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from .models import Book, UserBookRelation
+from rest_framework.pagination import PageNumberPagination
 from .serializers import BookSerializer, UserBookRelationSerializer
 from django.db import models
 from django.shortcuts import get_object_or_404
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from rest_framework.permissions import IsAuthenticated
+from django.core.cache import cache
 
 from rest_framework_simplejwt.authentication import JWTAuthentication
 # Create your views here.
@@ -96,6 +98,7 @@ class BookshelveView(APIView):
 class BookList(APIView):
     permission_classes = [IsAuthenticated] 
     authentication_classes = [JWTAuthentication]
+    pagination_class = PageNumberPagination()
     @swagger_auto_schema(
         operation_id='book_list',  # Add this unique identifier
         tags=['Books'],
@@ -137,10 +140,10 @@ class BookList(APIView):
                 user_relations__user=request.user,
                 user_relations__shelf=shelf
             )
+        paginated_queryset = self.pagination_class.paginate_queryset(queryset, request)
+        serializer = BookSerializer(paginated_queryset, many=True)
+        return self.pagination_class.get_paginated_response(serializer.data)
         
-        serializer = BookSerializer(queryset, many=True)
-        return Response(serializer.data)
-    
 class BookDetailView(APIView):
     permission_classes = [IsAuthenticated] 
     authentication_classes = [JWTAuthentication]
@@ -188,6 +191,10 @@ class BookDetailView(APIView):
     )
     
     def get(self, request, id=None):
+        cache_key = f"book_detail_{id}"
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            return Response(cached_data)
         book = get_object_or_404(Book, id=id)
         
         user_relation = None

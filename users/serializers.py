@@ -40,8 +40,7 @@ class ProfileCompletionSerializer(BaseUserSerializer):
             'bio': {'required': False}
         }
 
-
-    
+   
 class ChangePasswordSerializer(serializers.Serializer):
     current_password = serializers.CharField(required=True)
     new_password = serializers.CharField(required=True)
