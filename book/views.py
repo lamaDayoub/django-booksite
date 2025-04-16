@@ -208,5 +208,6 @@ class BookDetailView(APIView):
             'book': BookSerializer(book).data,
             'user_status': UserBookRelationSerializer(user_relation).data if user_relation else None
         }
+        cache.set(cache_key, response_data, timeout=60 * 15) 
         
         return Response(response_data)
