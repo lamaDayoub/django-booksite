@@ -4,13 +4,13 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-django = "*"
 djangorestframework = "*"
 djoser = "*"
 drf-yasg = "*"
 coreapi = "*"
 pyjwt = ">=2.10.1"
 django-environ = "*"
+django = "*"
 
 [dev-packages]
 
