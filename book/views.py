@@ -74,33 +74,104 @@ class BookshelveView(APIView):
         security=[{"Bearer": []}]
     )
     
-    def post(self,request):
-        book_data=request.data.get('book')
-        book,created=Book.objects.get_or_create(
+    # def post(self,request):
+    #     book_data=request.data.get('book')
+    #     book,created=Book.objects.get_or_create(
+    #         title=book_data['title'],
+    #         author=book_data['author'],
+    #         defaults=book_data
+            
+    #     )
+
+    #     try:
+    #         user_book, created = UserBookRelation.objects.update_or_create(
+    #                                 user=request.user,
+    #                                 book=book,
+    #                                 defaults={
+    #                                         'shelf': request.data['shelf'],
+    #                                         'rating': request.data.get('rating')
+    #                                 }
+    #                              )
+    #     finally:
+    #         cache_key = f"book_detail_{request.user.id}_{book.id}"
+    #         cache.delete(cache_key)
+        
+    #     serializer=UserBookRelationSerializer(instance=user_book)
+        
+    #     cache_key = f"book_detail_{request.user.id}_{book.id}"
+    #     cache.delete(cache_key)
+
+    # # Step 6: Return the serialized data
+    #     return Response(serializer.data, 
+    #                 status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+    def post(self, request):
+    # Debug: Print the incoming request data
+        print(f"Request data: {request.data}")
+
+    
+        book_data = request.data.get('book')
+        if not book_data or 'title' not in book_data or 'author' not in book_data:
+            return Response(
+            {"error": "Invalid book data. 'title' and 'author' are required."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+        try:
+            book, created = Book.objects.get_or_create(
             title=book_data['title'],
             author=book_data['author'],
             defaults=book_data
+        )
+        except Exception as e:
+            return Response(
+            {"error": f"Error processing book data: {str(e)}"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+        print(f"Book {'created' if created else 'retrieved'}: {book}")
+
+        modified_data = request.data.copy()  
+        modified_data.pop('book', None)  
+        modified_data['book'] = book.id  
+
+   
+        serializer = UserBookRelationSerializer(data=modified_data, context={'book': book})
+
+        if serializer.is_valid():
             
-        )
+            try:
+                user_book, created = UserBookRelation.objects.update_or_create(
+                user=request.user,
+                book=book,
+                defaults={
+                    'shelf': serializer.validated_data['shelf'],
+                    'rating': serializer.validated_data.get('rating')
+                }
+            )
+            except Exception as e:
+                return Response(
+                {"error": f"Error updating or creating UserBookRelation: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+      
+            cache_key = f"book_detail_{request.user.id}_{book.id}"
+            cache.delete(cache_key)
+
         
-        user_book,created=UserBookRelation.objects.update_or_create(
-            user=request.user,
-            book=book,
-            defaults={
-                'shelf': request.data['shelf'],
-                'rating':request.data.get('rating')
-            }
-        )
-        serializer=UserBookRelationSerializer(user_book)
-        return Response(serializer.data, 
+            response_serializer = UserBookRelationSerializer(instance=user_book)
+            return Response(response_serializer.data, 
                         status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+        else:
+        
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
         
 class BookList(APIView):
     permission_classes = [IsAuthenticated] 
     authentication_classes = [JWTAuthentication]
     pagination_class = PageNumberPagination()
     @swagger_auto_schema(
-        operation_id='book_list',  # Add this unique identifier
+        operation_id='book_list',  
         tags=['Books'],
         operation_description="List all books with optional search and shelf filtering",
         manual_parameters=[
@@ -140,9 +211,11 @@ class BookList(APIView):
                 user_relations__user=request.user,
                 user_relations__shelf=shelf
             )
-        paginated_queryset = self.pagination_class.paginate_queryset(queryset, request)
+        queryset = queryset.order_by('title')
+        paginator=PageNumberPagination()
+        paginated_queryset = paginator.paginate_queryset(queryset, request)
         serializer = BookSerializer(paginated_queryset, many=True)
-        return self.pagination_class.get_paginated_response(serializer.data)
+        return paginator.get_paginated_response(serializer.data)
         
 class BookDetailView(APIView):
     permission_classes = [IsAuthenticated] 
@@ -191,7 +264,8 @@ class BookDetailView(APIView):
     )
     
     def get(self, request, id=None):
-        cache_key = f"book_detail_{id}"
+        cache_key = f"book_detail_{request.user.id}_{id}"
+        
         cached_data = cache.get(cache_key)
         if cached_data:
             return Response(cached_data)
